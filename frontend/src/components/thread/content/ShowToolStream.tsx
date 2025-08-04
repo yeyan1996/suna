@@ -144,11 +144,6 @@ export const ShowToolStream: React.FC<ShowToolStreamProps> = ({
                                 ? 'bg-gradient-to-b from-zinc-100 dark:from-neutral-900 via-zinc-100/80 dark:via-neutral-900/80 to-transparent'
                                 : 'bg-gradient-to-b from-muted via-muted/80 to-transparent'
                                 }`} />
-                            {/* Bottom gradient */}
-                            <div className={`absolute bottom-0 left-0 right-0 h-8 pointer-events-none transition-all duration-500 ease-in-out ${shouldShowContent
-                                ? 'bg-gradient-to-t from-zinc-100 dark:from-neutral-900 via-zinc-100/80 dark:via-neutral-900/80 to-transparent'
-                                : 'bg-gradient-to-t from-muted via-muted/80 to-transparent'
-                                }`} />
                         </div>
                     </div>
                 ) : (
