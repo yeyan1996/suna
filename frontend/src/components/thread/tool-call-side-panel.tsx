@@ -34,6 +34,7 @@ interface ToolCallSidePanelProps {
   toolCalls: ToolCallInput[];
   currentIndex: number;
   onNavigate: (newIndex: number) => void;
+  onNavigateModeChange: (mode: 'live' | 'manual') => void;
   externalNavigateToIndex?: number;
   messages?: ApiMessageType[];
   agentStatus: string;
@@ -68,6 +69,7 @@ export function ToolCallSidePanel({
   toolCalls,
   currentIndex,
   onNavigate,
+  onNavigateModeChange,
   messages,
   agentStatus,
   project,
@@ -87,6 +89,10 @@ export function ToolCallSidePanel({
   const [isCopyingContent, setIsCopyingContent] = React.useState(false);
 
   const isMobile = useIsMobile();
+
+  React.useEffect(() => {
+    onNavigateModeChange(navigationMode);
+  }, [navigationMode, onNavigateModeChange]);
 
   const handleClose = React.useCallback(() => {
     onClose();
@@ -150,12 +156,22 @@ export function ToolCallSidePanel({
     }
   }, [toolCalls, navigationMode, toolCallSnapshots.length, isInitialized]);
 
-  React.useEffect(() => {
-    if (isOpen && !isInitialized && toolCallSnapshots.length > 0) {
-      setInternalIndex(Math.min(currentIndex, toolCallSnapshots.length - 1));
-    }
-  }, [isOpen, currentIndex, isInitialized, toolCallSnapshots.length]);
-
+ React.useEffect(() => {
+   if (isOpen && toolCallSnapshots.length > 0) {
+     // Only sync if we're not in manual mode or if it's an external navigation
+     if (!isInitialized || navigationMode === 'live') {
+       const newIndex = Math.min(currentIndex, toolCallSnapshots.length - 1);
+       setInternalIndex(newIndex);
+     }
+   }
+ }, [
+   isOpen,
+   currentIndex,
+   isInitialized,
+   toolCallSnapshots.length,
+   navigationMode,
+ ]);
+ 
   const safeInternalIndex = Math.min(internalIndex, Math.max(0, toolCallSnapshots.length - 1));
   const currentSnapshot = toolCallSnapshots[safeInternalIndex];
   const currentToolCall = currentSnapshot?.toolCall;
@@ -287,6 +303,7 @@ export function ToolCallSidePanel({
     }
   }, [internalIndex, totalCalls, onNavigate]);
 
+  console.log('navigationMode', navigationMode);
   const isLiveMode = navigationMode === 'live';
   const showJumpToLive = navigationMode === 'manual' && agentStatus === 'running';
   const showJumpToLatest = navigationMode === 'manual' && agentStatus !== 'running';

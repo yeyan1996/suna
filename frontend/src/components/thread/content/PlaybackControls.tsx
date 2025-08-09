@@ -1,4 +1,10 @@
-import React, { useCallback, useEffect, useState, useRef } from 'react';
+import React, {
+  useCallback,
+  useEffect,
+  useState,
+  useRef,
+  useMemo,
+} from 'react';
 import { Button } from '@/components/ui/button';
 import {
   Play,
@@ -9,11 +15,12 @@ import {
   ArrowUp,
 } from 'lucide-react';
 import { UnifiedMessage } from '@/components/thread/types';
-import { safeJsonParse } from '@/components/thread/utils';
 import Link from 'next/link';
+import { parseXmlToolCalls } from '../tool-views/xml-parser';
 
 // Define the set of tags whose raw XML should be hidden during streaming
 const HIDE_STREAMING_XML_TAGS = new Set([
+  'create-tasks',
   'execute-command',
   'create-file',
   'delete-file',
@@ -46,9 +53,10 @@ export interface PlaybackControlsProps {
   isSidePanelOpen: boolean;
   onToggleSidePanel: () => void;
   toolCalls: any[];
-  setCurrentToolIndex: (index: number) => void;
+  setCurrentToolIndex: React.Dispatch<React.SetStateAction<number>>;
   onFileViewerOpen: () => void;
   projectName?: string;
+  navigationMode: 'live' | 'manual';
 }
 
 export interface PlaybackState {
@@ -58,7 +66,6 @@ export interface PlaybackState {
   streamingText: string;
   isStreamingText: boolean;
   currentToolCall: any | null;
-  toolPlaybackIndex: number;
 }
 
 export interface PlaybackController {
@@ -70,6 +77,7 @@ export interface PlaybackController {
   togglePlayback: () => void;
   resetPlayback: () => void;
   skipToEnd: () => void;
+  forward: (step?: number) => void;
 }
 
 export const PlaybackControls = ({
@@ -80,6 +88,7 @@ export const PlaybackControls = ({
   setCurrentToolIndex,
   onFileViewerOpen,
   projectName = 'Shared Conversation',
+  navigationMode,
 }: PlaybackControlsProps): PlaybackController => {
   const [playbackState, setPlaybackState] = useState<PlaybackState>({
     isPlaying: false,
@@ -88,7 +97,6 @@ export const PlaybackControls = ({
     streamingText: '',
     isStreamingText: false,
     currentToolCall: null,
-    toolPlaybackIndex: -1,
   });
 
   // Extract state variables for easier access
@@ -99,7 +107,6 @@ export const PlaybackControls = ({
     streamingText,
     isStreamingText,
     currentToolCall,
-    toolPlaybackIndex,
   } = playbackState;
 
   const playbackTimeout = useRef<NodeJS.Timeout | null>(null);
@@ -114,12 +121,7 @@ export const PlaybackControls = ({
     updatePlaybackState({
       isPlaying: !isPlaying,
     });
-
-    // When starting playback, show the side panel
-    if (!isPlaying && !isSidePanelOpen) {
-      onToggleSidePanel();
-    }
-  }, [isPlaying, isSidePanelOpen, onToggleSidePanel, updatePlaybackState]);
+  }, [isPlaying, updatePlaybackState]);
 
   const resetPlayback = useCallback(() => {
     updatePlaybackState({
@@ -129,9 +131,8 @@ export const PlaybackControls = ({
       streamingText: '',
       isStreamingText: false,
       currentToolCall: null,
-      toolPlaybackIndex: -1,
     });
-    setCurrentToolIndex(-1);
+    setCurrentToolIndex(null);
 
     if (playbackTimeout.current) {
       clearTimeout(playbackTimeout.current);
@@ -148,16 +149,38 @@ export const PlaybackControls = ({
     onToggleSidePanel,
   ]);
 
+  const skipToEnd = useCallback(() => {
+    updatePlaybackState({
+      isPlaying: false,
+      currentMessageIndex: messages.length,
+      visibleMessages: messages,
+      streamingText: '',
+      isStreamingText: false,
+      currentToolCall: null,
+    });
+
+    if (toolCalls.length > 0) {
+      setCurrentToolIndex(toolCalls.length - 1);
+      if (!isSidePanelOpen) {
+        // show the side panel
+        onToggleSidePanel();
+      }
+    }
+  }, [
+    messages,
+    toolCalls,
+    isSidePanelOpen,
+    onToggleSidePanel,
+    setCurrentToolIndex,
+    updatePlaybackState,
+  ]);
+
   const forward = useCallback(
     (step: number = 1) => {
       const newMessageIndex = Math.min(
         currentMessageIndex + step,
         messages.length,
       );
-
-      if (!isSidePanelOpen) {
-        onToggleSidePanel();
-      }
 
       // If we're moving to a new message, update the visible messages
       if (newMessageIndex > currentMessageIndex) {
@@ -172,43 +195,11 @@ export const PlaybackControls = ({
 
       // If we're at the end, stop playback
       if (newMessageIndex >= messages.length) {
-        updatePlaybackState({ isPlaying: false });
+        skipToEnd();
       }
     },
-    [
-      currentMessageIndex,
-      messages,
-      isSidePanelOpen,
-      onToggleSidePanel,
-      updatePlaybackState,
-    ],
+    [currentMessageIndex, messages, updatePlaybackState, skipToEnd],
   );
-
-  const skipToEnd = useCallback(() => {
-    updatePlaybackState({
-      isPlaying: false,
-      currentMessageIndex: messages.length,
-      visibleMessages: messages,
-      streamingText: '',
-      isStreamingText: false,
-      currentToolCall: null,
-      toolPlaybackIndex: toolCalls.length - 1,
-    });
-
-    if (toolCalls.length > 0) {
-      setCurrentToolIndex(toolCalls.length - 1);
-      if (!isSidePanelOpen) {
-        onToggleSidePanel();
-      }
-    }
-  }, [
-    messages,
-    toolCalls,
-    isSidePanelOpen,
-    onToggleSidePanel,
-    setCurrentToolIndex,
-    updatePlaybackState,
-  ]);
 
   // Streaming text function
   const streamText = useCallback(
@@ -229,6 +220,7 @@ export const PlaybackControls = ({
 
       // Split text into chunks (handling tool calls as special chunks)
       const chunks: { text: string; isTool: boolean; toolName?: string }[] = [];
+
       let lastIndex = 0;
       let match;
 
@@ -240,15 +232,6 @@ export const PlaybackControls = ({
             isTool: false,
           });
         }
-
-        // Add the tool call
-        const toolName = match[1] || match[2];
-        chunks.push({
-          text: match[0],
-          isTool: true,
-          toolName,
-        });
-
         lastIndex = toolCallRegex.lastIndex;
       }
 
@@ -259,6 +242,16 @@ export const PlaybackControls = ({
           isTool: false,
         });
       }
+
+      // Add tool calls
+      const toolCalls = parseXmlToolCalls(text);
+      chunks.push(
+        ...toolCalls.map((toolCall) => ({
+          text: toolCall.rawXml,
+          isTool: true,
+          toolName: toolCall.functionName,
+        })),
+      );
 
       let currentIndex = 0;
       let chunkIndex = 0;
@@ -303,8 +296,8 @@ export const PlaybackControls = ({
 
         const currentChunk = chunks[chunkIndex];
 
-        // If this is a tool call chunk and we're at the start of it
-        if (currentChunk.isTool && currentIndex === 0) {
+        // If this is a tool call chunk
+        if (currentChunk.isTool) {
           // For tool calls, check if they should be hidden during streaming
           if (
             currentChunk.toolName &&
@@ -317,16 +310,19 @@ export const PlaybackControls = ({
               xml_tag_name: currentChunk.toolName,
             };
 
-            updatePlaybackState({
-              currentToolCall: toolCall,
-              toolPlaybackIndex: toolPlaybackIndex + 1,
-            });
-
+            // If the side panel is closed, open it
             if (!isSidePanelOpen) {
               onToggleSidePanel();
             }
 
-            setCurrentToolIndex(toolPlaybackIndex + 1);
+            updatePlaybackState({
+              currentToolCall: toolCall,
+            });
+
+            // If we're in live mode, move to the next tool call
+            if (navigationMode === 'live') {
+              setCurrentToolIndex((prev: number) => prev + 1);
+            }
 
             // Pause streaming briefly while showing the tool
             isPaused = true;
@@ -384,10 +380,10 @@ export const PlaybackControls = ({
       };
     },
     [
+      navigationMode,
       isPlaying,
       messages,
       currentMessageIndex,
-      toolPlaybackIndex,
       setCurrentToolIndex,
       isSidePanelOpen,
       onToggleSidePanel,
@@ -525,6 +521,9 @@ export const PlaybackControls = ({
     [currentMessageIndex, resetPlayback],
   );
 
+  const showWelcomeOverlay =
+    visibleMessages.length === 0 && !streamingText && !currentToolCall;
+
   // Header with playback controls
   const renderHeader = useCallback(
     () => (
@@ -554,15 +553,17 @@ export const PlaybackControls = ({
             <PlayButton />
             <ResetButton />
             <ForwardButton />
-            <Button
-              variant="ghost"
-              size="icon"
-              onClick={onToggleSidePanel}
-              className={`h-8 w-8 ${isSidePanelOpen ? 'text-primary' : ''}`}
-              aria-label="Toggle Tool Panel"
-            >
-              <PanelRightOpen className="h-4 w-4" />
-            </Button>
+            {!showWelcomeOverlay && (
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={onToggleSidePanel}
+                className={`h-8 w-8 ${isSidePanelOpen ? 'text-primary' : ''}`}
+                aria-label="Toggle Tool Panel"
+              >
+                <PanelRightOpen className="h-4 w-4" />
+              </Button>
+            )}
           </div>
         </div>
       </div>
@@ -574,6 +575,7 @@ export const PlaybackControls = ({
       PlayButton,
       ResetButton,
       ForwardButton,
+      showWelcomeOverlay,
     ],
   );
 
@@ -622,7 +624,7 @@ export const PlaybackControls = ({
   const renderWelcomeOverlay = useCallback(
     () => (
       <>
-        {visibleMessages.length === 0 && !streamingText && !currentToolCall && (
+        {showWelcomeOverlay && (
           <div className="fixed inset-0 flex flex-col items-center justify-center">
             {/* Gradient overlay */}
             <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/50 to-transparent dark:from-black/90 dark:via-black/50 dark:to-transparent" />
@@ -652,7 +654,7 @@ export const PlaybackControls = ({
         )}
       </>
     ),
-    [currentToolCall, streamingText, togglePlayback, visibleMessages.length],
+    [showWelcomeOverlay, togglePlayback],
   );
 
   return {
@@ -664,6 +666,7 @@ export const PlaybackControls = ({
     togglePlayback,
     resetPlayback,
     skipToEnd,
+    forward,
   };
 };
 
