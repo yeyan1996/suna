@@ -352,7 +352,6 @@ export function ToolCallSidePanel({
     [internalIndex, totalCalls, onNavigate],
   );
 
-  console.log('navigationMode', navigationMode);
   const isLiveMode = navigationMode === 'live';
   const showJumpToLive =
     navigationMode === 'manual' && agentStatus === 'running';

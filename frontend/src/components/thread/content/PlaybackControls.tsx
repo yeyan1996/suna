@@ -110,6 +110,7 @@ export const PlaybackControls = ({
   } = playbackState;
 
   const playbackTimeout = useRef<NodeJS.Timeout | null>(null);
+  const cleanupStreamingRef = useRef<(() => void) | null>(null);
 
   // Helper function to update playback state
   const updatePlaybackState = useCallback((updates: Partial<PlaybackState>) => {
@@ -133,6 +134,10 @@ export const PlaybackControls = ({
       currentToolCall: null,
     });
     setCurrentToolIndex(null);
+
+    if (cleanupStreamingRef.current) {
+      cleanupStreamingRef.current();
+    }
 
     if (playbackTimeout.current) {
       clearTimeout(playbackTimeout.current);
@@ -243,10 +248,10 @@ export const PlaybackControls = ({
         });
       }
 
-      // Add tool calls
-      const toolCalls = parseXmlToolCalls(text);
+      // Add tool calls for the current text
+      const currentToolCalls = parseXmlToolCalls(text);
       chunks.push(
-        ...toolCalls.map((toolCall) => ({
+        ...currentToolCalls.map((toolCall) => ({
           text: toolCall.rawXmlWithWrapper,
           isTool: true,
           toolName: toolCall.functionName,
@@ -313,16 +318,14 @@ export const PlaybackControls = ({
             // If the side panel is closed, open it
             if (!isSidePanelOpen) {
               onToggleSidePanel();
+            } else if (navigationMode === 'live') {
+              // If we're in live mode, move to the next tool call
+              setCurrentToolIndex((prev: number) => prev + 1);
             }
 
             updatePlaybackState({
               currentToolCall: toolCall,
             });
-
-            // If we're in live mode, move to the next tool call
-            if (navigationMode === 'live') {
-              setCurrentToolIndex((prev: number) => prev + 1);
-            }
 
             // Pause streaming briefly while showing the tool
             isPaused = true;
@@ -372,6 +375,7 @@ export const PlaybackControls = ({
 
       // Return cleanup function
       return () => {
+        cleanupStreamingRef.current = null;
         updatePlaybackState({
           isStreamingText: false,
           streamingText: '',
@@ -395,8 +399,6 @@ export const PlaybackControls = ({
   // Main playback function
   useEffect(() => {
     if (!isPlaying || messages.length === 0) return;
-
-    let cleanupStreaming: (() => void) | undefined;
 
     const playbackNextMessage = async () => {
       // Ensure we're within bounds
@@ -428,7 +430,7 @@ export const PlaybackControls = ({
 
           // Stream the message content
           await new Promise<void>((resolve) => {
-            cleanupStreaming = streamText(content, resolve);
+            cleanupStreamingRef.current = streamText(content, resolve);
           });
         } catch (error) {
           console.error('Error streaming message:', error);
@@ -454,7 +456,7 @@ export const PlaybackControls = ({
 
     return () => {
       clearTimeout(playbackTimeout.current);
-      if (cleanupStreaming) cleanupStreaming();
+      if (cleanupStreamingRef.current) cleanupStreamingRef.current();
     };
   }, [
     isPlaying,
