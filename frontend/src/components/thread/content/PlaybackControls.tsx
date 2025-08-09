@@ -247,7 +247,7 @@ export const PlaybackControls = ({
       const toolCalls = parseXmlToolCalls(text);
       chunks.push(
         ...toolCalls.map((toolCall) => ({
-          text: toolCall.rawXml,
+          text: toolCall.rawXmlWithWrapper,
           isTool: true,
           toolName: toolCall.functionName,
         })),
