@@ -74,7 +74,8 @@ class AgentConfigTool(AgentBuilderBaseTool):
         <parameter name="name">Research Assistant</parameter>
         <parameter name="description">An AI assistant specialized in conducting research and providing comprehensive analysis</parameter>
         <parameter name="system_prompt">Act as a research analyst. Always verify sources</parameter>
-                        <parameter name="agentpress_tools">{"web_search_tool": true, "sb_files_tool": true, "sb_shell_tool": false}</parameter>
+        <parameter name="agentpress_tools">{"web_search_tool": true, "sb_files_tool": true, "sb_shell_tool": false}</parameter>
+        <parameter name="configured_mcps">[{"name": "github", "qualifiedName": "github.com/github/mcp", "config": {"token": "ghp_..."}, "enabledTools": ["search_repositories", "get_file"]}]</parameter>
         <parameter name="avatar">🔬</parameter>
         <parameter name="avatar_color">#4F46E5</parameter>
         </invoke>
