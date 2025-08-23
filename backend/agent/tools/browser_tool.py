@@ -150,7 +150,7 @@ class BrowserTool(SandboxToolsBase):
                         return True
                     else:
                         # If the browser api is not healthy, we need to restart the browser api
-                        model_api_key = config.OPENAI_API_KEY
+                        model_api_key = config.GEMINI_API_KEY
 
                         response = await self.sandbox.process.exec(f"curl -X POST 'http://localhost:8004/api/init' -H 'Content-Type: application/json' -d '{{\"api_key\": \"{model_api_key}\"}}'", timeout=90)
                         if response.exit_code == 0:
@@ -327,13 +327,13 @@ class BrowserTool(SandboxToolsBase):
         "type": "function",
         "function": {
             "name": "browser_act",
-            "description": "Perform any browser action using natural language description. CRITICAL: This tool automatically provides a screenshot with every action. For data entry actions (filling forms, entering text, selecting options), you MUST review the provided screenshot to verify that displayed values exactly match what was intended. Report mismatches immediately.",
+            "description": "Perform any browser action using natural language description. CRITICAL: This tool automatically provides a screenshot with every action. For data entry actions (filling forms, entering text, selecting options), you MUST review the provided screenshot to verify that displayed values exactly match what was intended. Report mismatches immediately. CRITICAL FILE UPLOAD RULE: ANY action that involves clicking, interacting with, or locating upload buttons, file inputs, resume upload sections, or any element that might trigger a choose file dialog MUST include the filePath parameter with filePath. This includes actions like 'click upload button', 'locate resume section', 'find file input' etc. Always err on the side of caution - if there's any possibility the action might lead to a file dialog, include filePath. This prevents accidental file dialog triggers without proper file handling.",
             "parameters": {
                 "type": "object",
                 "properties": {
                     "action": {
                         "type": "string",
-                        "description": "The action to perform. Examples: 'click the login button', 'fill in the email field with test@example.com', 'scroll down to see more content', 'select option 2 from the dropdown', 'press Enter', 'go back', 'wait 5 seconds', 'click at coordinates 100,200', 'drag the file icon to the drop zone', 'select United States from the country dropdown'"
+                        "description": "The action to perform. Examples: 'click the login button', 'fill in the email field with %email%', 'scroll down to see more content', 'select option 2 from the dropdown', 'press Enter', 'go back', 'wait 5 seconds', 'click at coordinates 100,200', 'select United States from the country dropdown'"
                     },
                     "variables": {
                         "type": "object",
@@ -345,6 +345,10 @@ class BrowserTool(SandboxToolsBase):
                         "type": "boolean",
                         "description": "Whether to include iframe content in the action. Set to true if the target element is inside an iframe.",
                         "default": True
+                    },
+                    "filePath": {
+                        "type": "string",
+                        "description": "CRITICAL: REQUIRED for ANY action that might involve file uploads. This includes: clicking upload buttons, locating resume sections, finding file inputs, scrolling to upload areas, or any action that could potentially trigger a file dialog. Always include this parameter when dealing with upload-related elements to prevent accidental file dialog triggers. The tool will automatically handle the file upload after the action is performed.",
                     }
                 },
                 "required": ["action"]
@@ -359,11 +363,20 @@ class BrowserTool(SandboxToolsBase):
         <parameter name="iframes">true</parameter>
         </invoke>
         </function_calls>
+        
+        <function_calls>
+        <invoke name="browser_act">
+        <parameter name="action">click on upload resume button</parameter>
+        <parameter name="filePath">/workspace/downloads/document.pdf</parameter>
+        </invoke>
+        </function_calls>
         ''')
-    async def browser_act(self, action: str, variables: dict = None, iframes: bool = False) -> ToolResult:
+    async def browser_act(self, action: str, variables: dict = None, iframes: bool = False, filePath: dict = None) -> ToolResult:
         """Perform any browser action using Stagehand."""
-        logger.debug(f"Browser acting: {action} (variables={'***' if variables else None}, iframes={iframes})")
+        logger.debug(f"Browser acting: {action} (variables={'***' if variables else None}, iframes={iframes}), filePath={filePath}")
         params = {"action": action, "iframes": iframes, "variables": variables}
+        if filePath:
+            params["filePath"] = filePath
         return await self._execute_stagehand_api("act", params)
     
     @openapi_schema({

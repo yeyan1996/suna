@@ -236,6 +236,8 @@ class Configuration:
     MORPH_API_KEY: Optional[str] = None
     GEMINI_API_KEY: Optional[str] = None
     OPENROUTER_API_BASE: Optional[str] = "https://openrouter.ai/api/v1"
+    OPENAI_COMPATIBLE_API_KEY: Optional[str] = None
+    OPENAI_COMPATIBLE_API_BASE: Optional[str] = None
     OR_SITE_URL: Optional[str] = "https://kortix.ai"
     OR_APP_NAME: Optional[str] = "Kortix AI"    
     
@@ -280,8 +282,8 @@ class Configuration:
     STRIPE_PRODUCT_ID_STAGING: str = 'prod_SCgIj3G7yPOAWY'
     
     # Sandbox configuration
-    SANDBOX_IMAGE_NAME = "kortix/suna:0.1.3.6"
-    SANDBOX_SNAPSHOT_NAME = "kortix/suna:0.1.3.6"
+    SANDBOX_IMAGE_NAME = "kortix/suna:0.1.3.9"
+    SANDBOX_SNAPSHOT_NAME = "kortix/suna:0.1.3.9"
     SANDBOX_ENTRYPOINT = "/usr/bin/supervisord -n -c /etc/supervisor/conf.d/supervisord.conf"
 
     # LangFuse configuration
